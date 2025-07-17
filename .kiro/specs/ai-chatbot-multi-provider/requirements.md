@@ -2,85 +2,140 @@
 
 ## Introduction
 
-This feature implements an AI chatbot application that supports multiple AI providers (OpenAI, Anthropic, etc.) as an MVP, with architecture designed to accommodate future RAG (Retrieval-Augmented Generation) capabilities using PostgreSQL as a vector database. The system consists of a Vue.js frontend with shadcn/ui components and TanStack Query, and a FastAPI backend.
+This document outlines the requirements for a technical support system that enables customers to describe technical issues, upload diagnostic files, and receive accurate, context-aware solutions through a Retrieval-Augmented Generation (RAG) pipeline. The system will be implemented as a modular monolith using FastAPI backend and Vue 3 frontend, with real-time streaming responses and multi-modal file processing capabilities.
 
 ## Requirements
 
 ### Requirement 1
 
-**User Story:** As a user, I want to select from different AI providers, so that I can choose the best model for my specific needs and have flexibility in my AI interactions.
+**User Story:** As a customer, I want to describe my technical issues in a chat interface and receive AI-powered solutions, so that I can quickly resolve problems without waiting for human support.
 
 #### Acceptance Criteria
 
-1. WHEN the user opens the chatbot interface THEN the system SHALL display a dropdown or selection interface with available AI providers
-2. WHEN the user selects an AI provider THEN the system SHALL persist this selection for the current session
-3. IF multiple providers are configured THEN the system SHALL allow switching between providers without losing chat history
-4. WHEN the user sends a message THEN the system SHALL route the request to the currently selected AI provider
+1. WHEN a user sends a message THEN the system SHALL perform similarity search against the vector knowledge base
+2. WHEN context is retrieved from documents THEN the system SHALL construct a rich prompt for the AI provider
+3. WHEN the AI generates a response THEN the system SHALL stream the response back to the user in real-time using Server-Sent Events
+4. WHEN the response is complete THEN the system SHALL include citations referencing the knowledge base documents used
+5. IF no relevant context is found THEN the system SHALL still provide a helpful response based on general AI knowledge
 
 ### Requirement 2
 
-**User Story:** As a user, I want to have conversations with AI models, so that I can get assistance, answers, and engage in meaningful dialogue.
+**User Story:** As a customer, I want to upload diagnostic files like logs and screenshots with my questions, so that the AI can provide more accurate and context-specific solutions.
 
 #### Acceptance Criteria
 
-1. WHEN the user types a message and submits it THEN the system SHALL send the message to the selected AI provider
-2. WHEN the AI provider responds THEN the system SHALL display the response in the chat interface
-3. WHEN a conversation is in progress THEN the system SHALL maintain conversation context and history
-4. IF the AI provider request fails THEN the system SHALL display an appropriate error message and allow retry
-5. WHEN the user starts a new conversation THEN the system SHALL clear the previous context
+1. WHEN a user uploads a file THEN the system SHALL accept images and text-based log files
+2. WHEN a file is uploaded THEN the system SHALL trigger a background task to process the file without blocking the API
+3. WHEN processing log files THEN the system SHALL extract key information like error codes, stack traces, and relevant context
+4. WHEN processing image files THEN the system SHALL use a multi-modal AI model to analyze screenshots for error messages and UI elements
+5. WHEN file processing is complete THEN the extracted information SHALL be used to augment the RAG pipeline context
+6. IF file processing fails THEN the system SHALL continue with the chat request and log the error
 
 ### Requirement 3
 
-**User Story:** As a developer, I want a modular provider system, so that I can easily add new AI providers without modifying existing code.
+**User Story:** As a system administrator, I want to manage the knowledge base by uploading and processing documents, so that the AI can provide accurate solutions based on our documentation.
 
 #### Acceptance Criteria
 
-1. WHEN a new AI provider needs to be added THEN the system SHALL support adding it through a standardized interface
-2. WHEN provider configurations change THEN the system SHALL load new configurations without requiring code changes
-3. IF a provider becomes unavailable THEN the system SHALL handle the failure gracefully and inform the user
-4. WHEN multiple providers are configured THEN the system SHALL manage API keys and configurations securely
+1. WHEN an administrator uploads a document THEN the system SHALL chunk the document into appropriate segments
+2. WHEN documents are chunked THEN the system SHALL create vector embeddings for each chunk
+3. WHEN embeddings are created THEN the system SHALL store them in the PostgreSQL database with pgvector extension
+4. WHEN documents are processed THEN the system SHALL make them available for similarity search
+5. IF document processing fails THEN the system SHALL provide clear error messages and maintain system stability
 
 ### Requirement 4
 
-**User Story:** As a developer, I want the system architecture to support future RAG capabilities, so that I can add document retrieval and vector search without major refactoring.
+**User Story:** As a user, I want to securely register and login to the system, so that my conversations and data are private and protected.
 
 #### Acceptance Criteria
 
-1. WHEN the database schema is designed THEN it SHALL include tables that can accommodate document storage and metadata
-2. WHEN the API endpoints are created THEN they SHALL be structured to support future document upload and retrieval operations
-3. IF vector search capabilities are added later THEN the current chat storage SHALL be compatible with vector embeddings
-4. WHEN conversations are stored THEN the system SHALL use PostgreSQL with a schema that supports future vector extensions
+1. WHEN a user registers THEN the system SHALL create a secure account with encrypted password storage
+2. WHEN a user logs in THEN the system SHALL provide JWT access and refresh tokens
+3. WHEN accessing protected resources THEN the system SHALL validate JWT tokens
+4. WHEN tokens expire THEN the system SHALL provide a secure refresh mechanism
+5. WHEN accessing data THEN the system SHALL ensure all conversations and files are scoped to the authenticated user
 
 ### Requirement 5
 
-**User Story:** As a user, I want my chat history to be preserved, so that I can reference previous conversations and maintain context across sessions.
+**User Story:** As a user, I want to provide my own AI provider API keys, so that I can use my preferred AI service and control my usage costs.
 
 #### Acceptance Criteria
 
-1. WHEN a user sends messages THEN the system SHALL store all conversations in the PostgreSQL database
-2. WHEN a user returns to the application THEN the system SHALL load their previous chat history
-3. WHEN conversations are displayed THEN they SHALL show timestamps and provider information
-4. IF the user wants to delete conversations THEN the system SHALL provide options to clear chat history
+1. WHEN a user provides API keys THEN the system SHALL encrypt them at rest
+2. WHEN making AI requests THEN the system SHALL use the user's provided API keys if available
+3. WHEN API keys are invalid THEN the system SHALL provide clear error messages
+4. WHEN users haven't provided keys THEN the system SHALL fall back to default provider configuration
+5. IF API rate limits are exceeded THEN the system SHALL handle errors gracefully and inform the user
 
 ### Requirement 6
 
-**User Story:** As a user, I want a responsive and intuitive chat interface, so that I can interact with the AI naturally across different devices.
+**User Story:** As a developer, I want the system to support multiple AI providers and vector databases through modular interfaces, so that we can easily switch or add new providers in the future.
 
 #### Acceptance Criteria
 
-1. WHEN the user accesses the chat interface THEN it SHALL be responsive and work on desktop and mobile devices
-2. WHEN messages are being processed THEN the system SHALL show loading indicators and typing states
-3. WHEN the user scrolls through chat history THEN the interface SHALL handle long conversations efficiently
-4. IF the user is typing THEN the system SHALL provide a smooth and responsive input experience
-5. WHEN new messages arrive THEN the chat SHALL auto-scroll to show the latest message
+1. WHEN implementing AI providers THEN the system SHALL use abstract base classes for AIProvider interface
+2. WHEN implementing vector databases THEN the system SHALL use abstract base classes for VectorDatabase interface
+3. WHEN adding new providers THEN the system SHALL only require implementing the interface methods
+4. WHEN the system starts THEN the system SHALL provide default implementations for OpenAI and PostgreSQL with pgvector
+5. IF a provider fails THEN the system SHALL handle errors gracefully and potentially fall back to alternatives
 
 ### Requirement 7
 
-**User Story:** As an administrator, I want to configure AI provider settings, so that I can manage API keys, rate limits, and provider-specific options.
+**User Story:** As a user, I want a responsive and intuitive chat interface, so that I can easily interact with the system on any device.
 
 #### Acceptance Criteria
 
-1. WHEN provider configurations are needed THEN the system SHALL support environment-based configuration management
-2. WHEN API keys are stored THEN they SHALL be handled securely and not exposed in client-side code
-3. IF rate limits are exceeded THEN the system SHALL handle provider-specific rate limiting gracefully
-4. WHEN provider settings change THEN the system SHALL apply new configurations without requiring restart
+1. WHEN accessing the interface THEN the system SHALL provide a responsive design that works on desktop and mobile
+2. WHEN viewing messages THEN the system SHALL display them in chat bubbles with proper formatting
+3. WHEN messages contain Markdown THEN the system SHALL render it properly
+4. WHEN responses include citations THEN the system SHALL display them as clickable references
+5. WHEN uploading files THEN the system SHALL provide a drag-and-drop interface
+6. WHEN files are being processed THEN the system SHALL show appropriate loading indicators
+
+### Requirement 8
+
+**User Story:** As a user, I want real-time streaming responses, so that I can see the AI's answer being generated and don't have to wait for the complete response.
+
+#### Acceptance Criteria
+
+1. WHEN the AI generates a response THEN the system SHALL stream tokens in real-time using Server-Sent Events
+2. WHEN streaming responses THEN the system SHALL maintain connection stability
+3. WHEN the stream completes THEN the system SHALL properly close the connection
+4. IF the stream is interrupted THEN the system SHALL handle reconnection gracefully
+5. WHEN multiple users are active THEN the system SHALL handle concurrent streaming sessions
+
+### Requirement 9
+
+**User Story:** As a system operator, I want the backend to be structured as a modular monolith, so that the system is maintainable while avoiding the complexity of microservices.
+
+#### Acceptance Criteria
+
+1. WHEN structuring the application THEN the system SHALL organize code into clear service modules
+2. WHEN implementing business logic THEN the system SHALL delegate from thin API routers to service classes
+3. WHEN handling data THEN the system SHALL use Pydantic for validation and SQLAlchemy for database operations
+4. WHEN processing files THEN the system SHALL stream uploads directly to S3-compatible storage
+5. WHEN running background tasks THEN the system SHALL use FastAPI's BackgroundTasks or Celery
+
+### Requirement 10
+
+**User Story:** As a user, I want my conversation history to be preserved and easily accessible, so that I can reference previous interactions and solutions.
+
+#### Acceptance Criteria
+
+1. WHEN a user sends messages THEN the system SHALL store the conversation history
+2. WHEN a user logs in THEN the system SHALL display their previous conversations
+3. WHEN viewing conversation history THEN the system SHALL maintain the original formatting and citations
+4. WHEN searching conversations THEN the system SHALL provide search functionality across message content
+5. WHEN deleting conversations THEN the system SHALL remove all associated data including uploaded files
+
+### Requirement 11
+
+**User Story:** As a developer, I want an internal tool or enhanced logging to inspect the intermediate steps of the RAG pipeline for any given conversation, so that I can easily debug why the system gave a specific answer and fine-tune its performance.
+
+#### Acceptance Criteria
+
+1. WHEN processing a RAG request THEN the system SHALL log all intermediate steps including similarity search results, retrieved documents, and prompt construction
+2. WHEN debugging is enabled THEN the system SHALL provide detailed logs of vector search scores and ranking
+3. WHEN inspecting conversations THEN the system SHALL provide an internal interface to view RAG pipeline details
+4. WHEN analyzing performance THEN the system SHALL track metrics like retrieval accuracy, response time, and token usage
+5. WHEN fine-tuning the system THEN the system SHALL provide insights into which knowledge base documents are most frequently used
