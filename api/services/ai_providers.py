@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from io import BytesIO
 
 import httpx
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError, RateLimitError as OpenAIRateLimitError, AuthenticationError
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -36,8 +36,8 @@ class RateLimitError(AIProviderError):
     pass
 
 
-class OpenAIProvider(AIProvider):
     """OpenAI provider implementation with chat completion, image analysis, and embeddings"""
+class OpenAIProvider(AIProvider):
     
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         """Initialize OpenAI provider
@@ -76,10 +76,11 @@ class OpenAIProvider(AIProvider):
             api_key: The API key to validate
             
         Returns:
-            True if the API key is valid, False otherwise
+            True if the API key is valid
             
         Raises:
             APIKeyValidationError: If validation fails due to invalid key
+            RateLimitError: If rate limit is exceeded
         """
         try:
             # Create a temporary client with the provided API key
@@ -89,24 +90,22 @@ class OpenAIProvider(AIProvider):
             await temp_client.models.list()
             return True
             
+        except AuthenticationError as e:
+            raise APIKeyValidationError(f"Invalid API key: {str(e)}")
+        except OpenAIRateLimitError as e:
+            raise RateLimitError(f"Rate limit exceeded: {str(e)}")
         except Exception as e:
-            error_message = str(e).lower()
-            if "invalid api key" in error_message or "unauthorized" in error_message:
-                raise APIKeyValidationError(f"Invalid API key: {str(e)}")
-            elif "rate limit" in error_message:
-                raise RateLimitError(f"Rate limit exceeded: {str(e)}")
-            else:
-                logger.error(f"API key validation failed: {str(e)}")
-                return False
+            logger.error(f"API key validation failed: {str(e)}")
+            raise APIKeyValidationError(f"API key validation failed: {str(e)}")
     
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((httpx.HTTPError, asyncio.TimeoutError)),
     )
-    async def chat_completion(
+    async def chat_completion( # type: ignore
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         stream: bool = False,
         model: str = "gpt-4o-mini",
         temperature: float = 0.7,
@@ -131,9 +130,17 @@ class OpenAIProvider(AIProvider):
             RateLimitError: If rate limit is exceeded
         """
         try:
+            # Convert messages to proper format for OpenAI API
+            formatted_messages = []
+            for msg in messages:
+                formatted_messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+            
             response = await self.client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=formatted_messages,  
                 stream=stream,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -141,19 +148,21 @@ class OpenAIProvider(AIProvider):
             )
             
             if stream:
-                async for chunk in response:
+                async for chunk in response:  # type: ignore
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             else:
-                if response.choices and response.choices[0].message.content:
-                    yield response.choices[0].message.content
+                if response.choices and response.choices[0].message.content:  # type: ignore
+                    yield response.choices[0].message.content  # type: ignore
                     
+        except AuthenticationError as e:
+            raise AIProviderError(f"Authentication failed: {str(e)}")
+        except OpenAIRateLimitError as e:
+            raise RateLimitError(f"Rate limit exceeded: {str(e)}")
+        except APIError as e:
+            raise AIProviderError(f"OpenAI API error: {str(e)}")
         except Exception as e:
-            error_message = str(e).lower()
-            if "rate limit" in error_message:
-                raise RateLimitError(f"Rate limit exceeded: {str(e)}")
-            else:
-                raise AIProviderError(f"Chat completion failed: {str(e)}")
+            raise AIProviderError(f"Chat completion failed: {str(e)}")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -214,7 +223,7 @@ class OpenAIProvider(AIProvider):
             
             response = await self.client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=messages,  # type: ignore
                 max_tokens=max_tokens,
                 **kwargs
             )
@@ -224,12 +233,14 @@ class OpenAIProvider(AIProvider):
             else:
                 raise AIProviderError("No response content received from image analysis")
                 
+        except AuthenticationError as e:
+            raise AIProviderError(f"Authentication failed: {str(e)}")
+        except OpenAIRateLimitError as e:
+            raise RateLimitError(f"Rate limit exceeded: {str(e)}")
+        except APIError as e:
+            raise AIProviderError(f"OpenAI API error: {str(e)}")
         except Exception as e:
-            error_message = str(e).lower()
-            if "rate limit" in error_message:
-                raise RateLimitError(f"Rate limit exceeded: {str(e)}")
-            else:
-                raise AIProviderError(f"Image analysis failed: {str(e)}")
+            raise AIProviderError(f"Image analysis failed: {str(e)}")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -278,9 +289,11 @@ class OpenAIProvider(AIProvider):
             
             return all_embeddings
             
+        except AuthenticationError as e:
+            raise AIProviderError(f"Authentication failed: {str(e)}")
+        except OpenAIRateLimitError as e:
+            raise RateLimitError(f"Rate limit exceeded: {str(e)}")
+        except APIError as e:
+            raise AIProviderError(f"OpenAI API error: {str(e)}")
         except Exception as e:
-            error_message = str(e).lower()
-            if "rate limit" in error_message:
-                raise RateLimitError(f"Rate limit exceeded: {str(e)}")
-            else:
-                raise AIProviderError(f"Embedding creation failed: {str(e)}")
+            raise AIProviderError(f"Embedding creation failed: {str(e)}")

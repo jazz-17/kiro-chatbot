@@ -14,11 +14,11 @@ class AIProvider(ABC):
     @abstractmethod
     async def chat_completion(
         self, 
-        messages: List[Dict[str, str]], 
+        messages: List[Dict[str, Any]], 
         stream: bool = False,
         **kwargs
-    ) -> Union[str, AsyncGenerator[str, None]]:
-        """Generate chat completion response"""
+    ) -> AsyncGenerator[str, None]:
+        """Generate chat completion response with optional streaming"""
         pass
     
     @abstractmethod
