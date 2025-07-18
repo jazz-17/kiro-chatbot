@@ -11,7 +11,7 @@ class Document(BaseEntity):
     content_type: str
     s3_key: str
     processed: bool = False
-    metadata: Dict[str, Any] = Field(default_factory=dict, alias="meta_data")
+    meta_data: Dict[str, Any] = Field(default_factory=dict, alias="meta_data")
 
 
 class DocumentChunk(BaseEntity):
@@ -20,7 +20,7 @@ class DocumentChunk(BaseEntity):
     content: str
     chunk_index: int
     embedding: List[float]
-    metadata: Dict[str, Any] = Field(default_factory=dict, alias="meta_data")
+    meta_data: Dict[str, Any] = Field(default_factory=dict, alias="meta_data")
 
 
 class RAGDebugLog(BaseEntity):
@@ -33,7 +33,7 @@ class RAGDebugLog(BaseEntity):
     search_scores: List[float]
     prompt_template: str
     final_prompt: str
-    response_metadata: Dict[str, Any] = Field(alias="response_meta_data")
+    response_meta_data: Dict[str, Any] = Field(alias="response_meta_data")
 
 
 class DocumentCreate(BaseModel):
@@ -41,7 +41,7 @@ class DocumentCreate(BaseModel):
     filename: str
     content_type: str
     s3_key: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    meta_data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentChunkCreate(BaseModel):
@@ -50,7 +50,7 @@ class DocumentChunkCreate(BaseModel):
     content: str
     chunk_index: int
     embedding: List[float]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    meta_data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RAGDebugLogCreate(BaseModel):
@@ -63,7 +63,7 @@ class RAGDebugLogCreate(BaseModel):
     search_scores: List[float]
     prompt_template: str
     final_prompt: str
-    response_metadata: Dict[str, Any]
+    response_meta_data: Dict[str, Any]
 
 
 class DocumentResponse(BaseModel):
@@ -73,7 +73,7 @@ class DocumentResponse(BaseModel):
     content_type: str
     s3_key: str
     processed: bool
-    metadata: Dict[str, Any]
+    meta_data: Dict[str, Any]
     created_at: datetime
     updated_at: Optional[datetime] = None
 

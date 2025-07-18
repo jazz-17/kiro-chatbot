@@ -57,15 +57,29 @@ class VectorDatabase(ABC):
     
     @abstractmethod
     async def similarity_search(
-        self, 
-        query_embedding: List[float], 
+        self,
+        query_embedding: List[float],
         limit: int = 5,
-        threshold: float = 0.7
+        threshold: float = 0.7,
+        filter: Dict[str, Any] = None # type: ignore
     ) -> List[Dict[str, Any]]:
-        """Perform similarity search"""
+        """Perform similarity search with optional metadata filtering"""
         pass
-    
+        
     @abstractmethod
     async def delete_embedding(self, embedding_id: str) -> bool:
         """Delete an embedding by ID"""
         pass
+    
+      
+    @abstractmethod
+    async def store_embeddings_batch(
+        self,
+        contents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> List[str] | None:
+        """Store a batch of contents with their embeddings"""
+        pass
+
+        

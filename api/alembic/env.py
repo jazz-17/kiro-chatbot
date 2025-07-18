@@ -20,10 +20,13 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from database.base import Base
-from database.models import *
+from database.tables import metadata
+from dotenv import load_dotenv
 
-target_metadata = Base.metadata
+# Load environment variables
+load_dotenv()
+
+target_metadata = metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -44,6 +47,11 @@ def run_migrations_offline() -> None:
 
     """
     url = config.get_main_option("sqlalchemy.url")
+    # Override with environment variable if available
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        url = database_url
+    
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -62,8 +70,14 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Override database URL with environment variable if available
+    configuration = config.get_section(config.config_ini_section, {})
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        configuration["sqlalchemy.url"] = database_url
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

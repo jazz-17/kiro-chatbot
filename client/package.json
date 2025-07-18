@@ -9,12 +9,20 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@tanstack/vue-query": "^5.83.0",
+    "@types/marked": "^6.0.0",
+    "@vueuse/core": "^13.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "highlight.js": "^11.11.1",
     "lucide-vue-next": "^0.525.0",
+    "marked": "^16.1.1",
     "pinia": "^3.0.3",
     "reka-ui": "^2.3.2",
     "tailwind-merge": "^3.3.1",
@@ -27,8 +35,11 @@
     "@types/node": "^22.16.4",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vitejs/plugin-vue-jsx": "^5.0.0",
+    "@vitest/ui": "^3.2.4",
+    "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.7.0",
     "autoprefixer": "^10.4.21",
+    "jsdom": "^26.1.0",
     "npm-run-all2": "^8.0.4",
     "postcss": "^8.5.6",
     "prettier": "3.5.3",
@@ -36,6 +47,7 @@
     "typescript": "~5.8.0",
     "vite": "^6.0.1",
     "vite-plugin-vue-devtools": "^7.7.7",
+    "vitest": "^3.2.4",
     "vue-tsc": "^2.2.10"
   }
 }

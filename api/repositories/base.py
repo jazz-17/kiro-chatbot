@@ -39,11 +39,11 @@ class BaseRepository(ABC, Generic[T]):
         pass
 
 
-class UserRepository(BaseRepository):
+class UserRepository(BaseRepository[T]):
     """Repository interface for user operations"""
     
     @abstractmethod
-    async def get_by_email(self, email: str) -> Optional[Any]:
+    async def get_by_email(self, email: str) -> Optional[T]:
         """Get user by email"""
         pass
     
@@ -52,21 +52,3 @@ class UserRepository(BaseRepository):
         """Check if email already exists"""
         pass
 
-
-class ConversationRepository(BaseRepository):
-    """Repository interface for conversation operations"""
-    
-    @abstractmethod
-    async def get_by_user_id(self, user_id: UUID, skip: int = 0, limit: int = 100) -> List[Any]:
-        """Get conversations by user ID"""
-        pass
-    
-    @abstractmethod
-    async def add_message(self, conversation_id: UUID, message: Any) -> Any:
-        """Add message to conversation"""
-        pass
-    
-    @abstractmethod
-    async def get_messages(self, conversation_id: UUID, skip: int = 0, limit: int = 100) -> List[Any]:
-        """Get messages for a conversation"""
-        pass

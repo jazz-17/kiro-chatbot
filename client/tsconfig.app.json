@@ -1,11 +1,18 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
+  // "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["vite/client", "node"]
+  },
+  "vueCompilerOptions": {
+    "target": 3,
+    "strictTemplates": true,
+    "skipTemplateCodegen": false,
+    "globalTypesPath": "./node_modules/vue/global.d.ts"
   }
 }
