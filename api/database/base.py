@@ -18,29 +18,13 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot_db"
 )
 
+print("Creating async engine...")
 # Create async engine
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Set to False in production
     future=True
 )
-
-# Create async session factory (still useful for transactions)
-async_session_maker = async_sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
-
-
-async def get_db() -> AsyncGenerator[AsyncConnection, None]:
-    """Get database connection for Core operations"""
-    async with engine.begin() as conn:
-        yield conn
-
-
-async def get_async_connection() -> AsyncConnection:
-    """Get async connection for direct use in services"""
-    return await engine.connect()
-
 
 # async def create_tables():
 #     """Create all tables using Core metadata"""
@@ -58,8 +42,6 @@ async def get_async_connection() -> AsyncConnection:
 __all__ = [
     "engine",
     "metadata", 
-    "get_db",
-    "get_async_connection",
     # "create_tables",
     # "drop_tables"
 ]

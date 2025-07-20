@@ -1,4 +1,4 @@
-from .base import get_db, engine, metadata
+from .base import engine, metadata
 from .tables import (
     users_table,
     conversations_table,
@@ -9,7 +9,6 @@ from .tables import (
 )
 
 __all__ = [
-    "get_db",
     "engine",
     "metadata",
     # "create_tables",

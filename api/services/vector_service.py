@@ -10,13 +10,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select, func, and_
-from sqlalchemy.orm import selectinload
+from sqlalchemy import text, select, func, and_, insert, delete, update
 
 from services.base import VectorDatabase
-from database.models import DocumentChunkDB, DocumentDB
-from models.document import DocumentChunk, DocumentChunkCreate
-from database.base import async_session_maker
+from models.document import DocumentChunk, DocumentChunkCreate, Document
+from database.tables import document_chunks_table, documents_table
+from database.base import engine
+from repositories.document_repository import DocumentChunkRepository, DocumentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,12 @@ class PostgreSQLVectorDB(VectorDatabase):
         Returns:
             List of chunk IDs that were created
         """
-        async with async_session_maker() as session:
+        async with engine.begin() as conn:
             try:
-                chunk_ids = []
-
+                chunk_repository = DocumentChunkRepository(conn)
+                
+                # Prepare DocumentChunk objects
+                chunks_to_create = []
                 for doc_data in documents:
                     # Validate embedding dimension
                     embedding = doc_data.get("embedding", [])
@@ -61,25 +63,26 @@ class PostgreSQLVectorDB(VectorDatabase):
                             f"expected dimension {self.embedding_dimension}"
                         )
 
-                    # Create document chunk
-                    chunk_db = DocumentChunkDB(
+                    # Create DocumentChunk using Pydantic model
+                    chunk = DocumentChunk(
                         document_id=doc_data["document_id"],
                         content=doc_data["content"],
                         chunk_index=doc_data["chunk_index"],
                         embedding=embedding,
                         meta_data=doc_data.get("metadata", {}),
                     )
+                    chunks_to_create.append(chunk)
 
-                    session.add(chunk_db)
-                    await session.flush()  # Get the ID
-                    chunk_ids.append(str(chunk_db.id))
+                # Use batch create for better performance
+                created_chunks = await chunk_repository.create_batch(chunks_to_create)
+                chunk_ids = [str(chunk.id) for chunk in created_chunks]
 
-                await session.commit()
+                await conn.commit()
                 logger.info(f"Stored {len(chunk_ids)} document chunks")
                 return chunk_ids
 
             except Exception as e:
-                await session.rollback()
+                await conn.rollback()
                 logger.error(f"Error storing embeddings: {str(e)}")
                 raise
 
@@ -110,12 +113,46 @@ class PostgreSQLVectorDB(VectorDatabase):
         chunk_ids = await self.store_embeddings(documents)
         return chunk_ids[0]
 
+    async def store_embeddings_batch(
+        self,
+        contents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> List[str] | None:
+        """
+        Store a batch of contents with their embeddings
+
+        Args:
+            contents: List of text contents
+            embeddings: List of vector embeddings
+            metadatas: List of metadata dictionaries
+
+        Returns:
+            List of chunk IDs that were created, or None if failed
+        """
+        try:
+            # Convert to the format expected by store_embeddings
+            documents = []
+            for i, (content, embedding, metadata) in enumerate(zip(contents, embeddings, metadatas)):
+                documents.append({
+                    "content": content,
+                    "embedding": embedding,
+                    "document_id": metadata["document_id"],
+                    "chunk_index": metadata.get("chunk_index", i),
+                    "metadata": metadata,
+                })
+            
+            return await self.store_embeddings(documents)
+        except Exception as e:
+            logger.error(f"Error in store_embeddings_batch: {str(e)}")
+            return None
+
     async def similarity_search(
         self,
         query_embedding: List[float],
         limit: int = 5,
         threshold: float = 0.7,
-        document_ids: Optional[List[UUID]] = None,
+        filter: Dict[str, Any] = None, # type: ignore
     ) -> List[Dict[str, Any]]:
         """
         Perform similarity search against stored embeddings
@@ -124,7 +161,7 @@ class PostgreSQLVectorDB(VectorDatabase):
             query_embedding: Query vector embedding
             limit: Maximum number of results to return
             threshold: Minimum similarity threshold (0-1, where 1 is identical)
-            document_ids: Optional list of document IDs to filter by
+            filter: Optional metadata filter (supports document_ids key for filtering by document IDs)
 
         Returns:
             List of similar chunks with metadata and similarity scores
@@ -137,67 +174,27 @@ class PostgreSQLVectorDB(VectorDatabase):
 
         async with async_session_maker() as session:
             try:
-                # Build the similarity search query using cosine similarity
-                # pgvector uses 1 - cosine_distance for cosine similarity
-                query = (
-                    select(
-                        DocumentChunkDB.id,
-                        DocumentChunkDB.content,
-                        DocumentChunkDB.chunk_index,
-                        DocumentChunkDB.meta_data,
-                        DocumentChunkDB.document_id,
-                        DocumentDB.filename,
-                        DocumentDB.s3_key,
-                        # Calculate cosine similarity (1 - cosine distance)
-                        (
-                            1
-                            - func.cosine_distance(
-                                DocumentChunkDB.embedding, query_embedding
-                            )
-                        ).label("similarity_score"),
-                    )
-                    .select_from(DocumentChunkDB.__table__.join(DocumentDB.__table__))
-                    .where(
-                        # Filter by similarity threshold
-                        (
-                            1
-                            - func.cosine_distance(
-                                DocumentChunkDB.embedding, query_embedding
-                            )
-                        )
-                        >= threshold
-                    )
+                chunk_repository = DocumentChunkRepository(await session.connection())
+                
+                # Use the repository's similarity search method
+                search_results = await chunk_repository.similarity_search(
+                    query_embedding=query_embedding,
+                    limit=limit,
+                    threshold=threshold
                 )
 
-                # Add document ID filter if provided
-                if document_ids:
-                    query = query.where(DocumentChunkDB.document_id.in_(document_ids))
-
-                # Order by similarity score descending and limit results
-                query = query.order_by(
-                    (
-                        1
-                        - func.cosine_distance(
-                            DocumentChunkDB.embedding, query_embedding
-                        )
-                    ).desc()
-                ).limit(limit)
-
-                result = await session.execute(query)
-                rows = result.fetchall()
-
-                # Format results
+                # Transform results to match expected format
                 similar_chunks = []
-                for row in rows:
+                for result in search_results:
                     chunk_data = {
-                        "id": str(row.id),
-                        "content": row.content,
-                        "chunk_index": row.chunk_index,
-                        "document_id": str(row.document_id),
-                        "document_filename": row.filename,
-                        "document_s3_key": row.s3_key,
-                        "similarity_score": float(row.similarity_score),
-                        "metadata": row.meta_data or {},
+                        "id": result["chunk_id"],
+                        "content": result["content"],
+                        "chunk_index": result["chunk_index"],
+                        "document_id": result["document_id"],
+                        "document_filename": result["filename"],
+                        "document_s3_key": "",  # Not included in repository result
+                        "similarity_score": result["similarity_score"],
+                        "metadata": result["meta_data"] or {},
                     }
                     similar_chunks.append(chunk_data)
 
@@ -223,23 +220,21 @@ class PostgreSQLVectorDB(VectorDatabase):
         """
         async with async_session_maker() as session:
             try:
-                # Find the chunk
-                query = select(DocumentChunkDB).where(
-                    DocumentChunkDB.id == UUID(embedding_id)
-                )
-                result = await session.execute(query)
-                chunk = result.scalar_one_or_none()
-
+                chunk_repository = DocumentChunkRepository(await session.connection())
+                
+                # Check if chunk exists
+                chunk = await chunk_repository.get_by_id(UUID(embedding_id))
                 if not chunk:
                     logger.warning(f"Chunk with ID {embedding_id} not found")
                     return False
 
                 # Delete the chunk
-                await session.delete(chunk)
+                success = await chunk_repository.delete(UUID(embedding_id))
                 await session.commit()
 
-                logger.info(f"Deleted chunk with ID {embedding_id}")
-                return True
+                if success:
+                    logger.info(f"Deleted chunk with ID {embedding_id}")
+                return success
 
             except Exception as e:
                 await session.rollback()
@@ -258,21 +253,14 @@ class PostgreSQLVectorDB(VectorDatabase):
         """
         async with async_session_maker() as session:
             try:
-                # Find all chunks for the document
-                query = select(DocumentChunkDB).where(
-                    DocumentChunkDB.document_id == document_id
-                )
-                result = await session.execute(query)
-                chunks = result.scalars().all()
-
-                # Delete all chunks
-                for chunk in chunks:
-                    await session.delete(chunk)
-
+                chunk_repository = DocumentChunkRepository(await session.connection())
+                
+                # Use repository method to delete all chunks for document
+                chunk_count = await chunk_repository.delete_by_document_id(document_id)
                 await session.commit()
 
-                logger.info(f"Deleted {len(chunks)} chunks for document {document_id}")
-                return len(chunks)
+                logger.info(f"Deleted {chunk_count} chunks for document {document_id}")
+                return chunk_count
 
             except Exception as e:
                 await session.rollback()
@@ -291,26 +279,23 @@ class PostgreSQLVectorDB(VectorDatabase):
         """
         async with async_session_maker() as session:
             try:
-                query = (
-                    select(DocumentChunkDB)
-                    .options(selectinload(DocumentChunkDB.document))
-                    .where(DocumentChunkDB.id == UUID(chunk_id))
-                )
-
-                result = await session.execute(query)
-                chunk = result.scalar_one_or_none()
-
+                chunk_repository = DocumentChunkRepository(await session.connection())
+                document_repository = DocumentRepository(await session.connection())
+                
+                # Get chunk by ID
+                chunk = await chunk_repository.get_by_id(UUID(chunk_id))
                 if not chunk:
                     return None
+
+                # Get document info
+                document = await document_repository.get_by_id(chunk.document_id)
 
                 return {
                     "id": str(chunk.id),
                     "content": chunk.content,
                     "chunk_index": chunk.chunk_index,
                     "document_id": str(chunk.document_id),
-                    "document_filename": (
-                        chunk.document.filename if chunk.document else None
-                    ),
+                    "document_filename": document.filename if document else None,
                     "embedding": chunk.embedding,
                     "metadata": chunk.meta_data or {},
                 }
@@ -335,19 +320,16 @@ class PostgreSQLVectorDB(VectorDatabase):
         """
         async with async_session_maker() as session:
             try:
-                query = (
-                    select(DocumentChunkDB)
-                    .where(DocumentChunkDB.document_id == document_id)
-                    .order_by(DocumentChunkDB.chunk_index)
-                    .offset(skip)
-                    .limit(limit)
-                )
-
-                result = await session.execute(query)
-                chunks = result.scalars().all()
+                chunk_repository = DocumentChunkRepository(await session.connection())
+                
+                # Get chunks by document ID
+                chunks = await chunk_repository.get_by_document_id(document_id)
+                
+                # Apply pagination
+                paginated_chunks = chunks[skip:skip + limit]
 
                 chunk_list = []
-                for chunk in chunks:
+                for chunk in paginated_chunks:
                     chunk_data = {
                         "id": str(chunk.id),
                         "content": chunk.content,
@@ -381,7 +363,7 @@ class PostgreSQLVectorDB(VectorDatabase):
                 # Recreate index with optimized parameters
                 # Lists parameter should be roughly sqrt(total_rows)
                 count_result = await session.execute(
-                    select(func.count(DocumentChunkDB.id))
+                    select(func.count(document_chunks_table.c.id))
                 )
                 total_chunks = count_result.scalar() or 0
 
@@ -423,7 +405,7 @@ class PostgreSQLVectorDB(VectorDatabase):
             try:
                 # Get total number of chunks
                 count_result = await session.execute(
-                    select(func.count(DocumentChunkDB.id))
+                    select(func.count(document_chunks_table.c.id))
                 )
                 total_chunks = count_result.scalar() or 0
 
